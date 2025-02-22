@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi.middleware.cors import CORSMiddleware
 import json
+from pytz import timezone
 
 from cache import rd, update_cache
 from classroom_availability import get_classroom_availability
@@ -17,12 +18,12 @@ app.add_middleware(
     allow_headers=['*'],
 )
 
-scheduler = AsyncIOScheduler()
+scheduler = AsyncIOScheduler(timezone=timezone('America/New_York'))
 
 @app.on_event('startup')
 async def startup_event():
     try:
-        scheduler.add_job(update_cache, 'cron', hour='0,12') # run at 12 AM and 12 PM
+        scheduler.add_job(update_cache, 'cron', hour='0,12') # run at 12 AM and 12 PM ET
         scheduler.start()
         print('Scheduler started successfully')
     except Exception as e:
