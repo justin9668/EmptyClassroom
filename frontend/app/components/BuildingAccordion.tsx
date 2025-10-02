@@ -61,13 +61,53 @@ export function BuildingAccordion({ buildings, searchQuery }: BuildingAccordionP
     return `${formattedHour}:${minutes.toString().padStart(2, '0')} ${ampm}`;
   };
 
+  const sortClassrooms = (classrooms: Classroom[]): Classroom[] => {
+    return [...classrooms].sort((a, b) => {
+      const nameA = a.name.toLowerCase();
+      const nameB = b.name.toLowerCase();
+      
+      const aStartsWithLetter = /^[a-z]/.test(nameA);
+      const bStartsWithLetter = /^[a-z]/.test(nameB);
+      
+      if (aStartsWithLetter && !bStartsWithLetter) return -1;
+      if (!aStartsWithLetter && bStartsWithLetter) return 1;
+      
+      if (aStartsWithLetter && bStartsWithLetter) {
+        return nameA.localeCompare(nameB);
+      }
+      
+      const aMatch = nameA.match(/^(\d+)([a-z]*)/);
+      const bMatch = nameB.match(/^(\d+)([a-z]*)/);
+      
+      if (aMatch && bMatch) {
+        const aNum = parseInt(aMatch[1], 10);
+        const bNum = parseInt(bMatch[1], 10);
+        const aSuffix = aMatch[2] || '';
+        const bSuffix = bMatch[2] || '';
+        
+        if (aNum !== bNum) {
+          return aNum - bNum;
+        }
+        
+        if (aSuffix === '' && bSuffix !== '') return -1;
+        if (aSuffix !== '' && bSuffix === '') return 1;
+        if (aSuffix !== '' && bSuffix !== '') return aSuffix.localeCompare(bSuffix);
+      }
+      
+      return nameA.localeCompare(nameB);
+    });
+  };
+
   const matchesSearch = (building: Building, code: string, classroom?: Classroom) => {
     const query = searchQuery.toLowerCase().trim();
     if (!query) return true;
 
     if (classroom) {
+      const withSpace = `${code} ${classroom.name}`.toLowerCase();
+      const withoutSpace = `${code}${classroom.name}`.toLowerCase();
       return (
-        `${code} ${classroom.name}`.toLowerCase().includes(query) ||
+        withSpace.includes(query) ||
+        withoutSpace.includes(query) ||
         building.name.toLowerCase().includes(query)
       );
     }
@@ -75,9 +115,11 @@ export function BuildingAccordion({ buildings, searchQuery }: BuildingAccordionP
     return (
       code.toLowerCase().includes(query) ||
       building.name.toLowerCase().includes(query) ||
-      building.classrooms.some(room => 
-        `${code} ${room.name}`.toLowerCase().includes(query)
-      )
+      building.classrooms.some(room => {
+        const withSpace = `${code} ${room.name}`.toLowerCase();
+        const withoutSpace = `${code}${room.name}`.toLowerCase();
+        return withSpace.includes(query) || withoutSpace.includes(query);
+      })
     );
   };
 
@@ -90,7 +132,7 @@ export function BuildingAccordion({ buildings, searchQuery }: BuildingAccordionP
     if (filteredClassrooms.length > 0 || matchesSearch(typedBuilding, code)) {
       acc[code] = {
         ...typedBuilding,
-        classrooms: filteredClassrooms,
+        classrooms: sortClassrooms(filteredClassrooms),
       };
     }
 

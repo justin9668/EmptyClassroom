@@ -18,7 +18,7 @@ export function BuildingsContent() {
           throw new Error(`Failed to load classrooms (${response.status})`);
         }
         const data = await response.json();
-        setBuildings(data);
+        setBuildings(data.buildings);
         setError(null);
       } catch (error) {
         console.error('Error fetching buildings:', error);
