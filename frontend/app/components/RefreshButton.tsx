@@ -1,11 +1,15 @@
 interface RefreshButtonProps {
   isRefreshing: boolean;
+  isCooldownLoading?: boolean;
   cooldownRemaining: number | null;
   onRefresh: () => void;
 }
 
-export function RefreshButton({ isRefreshing, cooldownRemaining, onRefresh }: RefreshButtonProps) {
-  const isDisabled = isRefreshing || (cooldownRemaining !== null && cooldownRemaining > 0);
+export function RefreshButton({ isRefreshing, isCooldownLoading, cooldownRemaining, onRefresh }: RefreshButtonProps) {
+  const isDisabled =
+    isRefreshing ||
+    Boolean(isCooldownLoading) ||
+    (cooldownRemaining !== null && cooldownRemaining > 0);
 
   return (
     <div className="relative group">
@@ -14,7 +18,7 @@ export function RefreshButton({ isRefreshing, cooldownRemaining, onRefresh }: Re
           isDisabled
             ? 'text-gray-400 cursor-not-allowed' 
             : 'text-gray-500 hover:text-gray-700 cursor-pointer hover:bg-gray-100'
-        }`}
+        } ${isRefreshing ? 'animate-pulse' : ''}`}
         onClick={onRefresh}
         disabled={isDisabled}
       >

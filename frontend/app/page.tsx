@@ -3,21 +3,54 @@
 import { BuildingsContent } from './components/BuildingsContent';
 import { NotesTooltip } from './components/NotesTooltip';
 import { RefreshButton } from './components/RefreshButton';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import type { OpenClassroomsResponse } from './types/buildings';
 
 export default function Home() {
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [cooldownRemaining, setCooldownRemaining] = useState<number | null>(null);
-  const [cooldownStartTime, setCooldownStartTime] = useState<number | null>(null);
-  const [initialCooldownMinutes, setInitialCooldownMinutes] = useState<number | null>(null);
+  const [cooldownExpiresAt, setCooldownExpiresAt] = useState<number | null>(null);
+  const [isCooldownLoading, setIsCooldownLoading] = useState<boolean>(true);
+  const [buildings, setBuildings] = useState<OpenClassroomsResponse | null>(null);
+  const [buildingsError, setBuildingsError] = useState<string | null>(null);
 
-  const fetchLastUpdated = async () => {
+  const fetchCooldownStatus = useCallback(async () => {
+    setIsCooldownLoading(true);
+    try {
+      const response = await fetch('/api/cooldown-status');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.in_cooldown) {
+          const expiresAt = Date.now() + data.remaining_minutes * 60 * 1000;
+          setCooldownExpiresAt(expiresAt);
+          setCooldownRemaining(data.remaining_minutes);
+        } else {
+          setCooldownRemaining(null);
+          setCooldownExpiresAt(null);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch cooldown status:', error);
+    }
+    finally {
+      setIsCooldownLoading(false);
+    }
+  }, []);
+
+  const fetchLastUpdated = useCallback(async () => {
     try {
       const response = await fetch('/api/open-classrooms');
       if (response.ok) {
         const data = await response.json();
-        setLastUpdated(data.last_updated);
+        setBuildings(data.buildings);
+        setBuildingsError(null);
+        const incomingTs: string | null = data.last_updated ?? null;
+        if (incomingTs) {
+          if (!lastUpdated || new Date(incomingTs) >= new Date(lastUpdated)) {
+            setLastUpdated(incomingTs);
+          }
+        }
         
         if (data.last_updated) {
           await fetchCooldownStatus();
@@ -25,28 +58,9 @@ export default function Home() {
       }
     } catch (error) {
       console.error('Failed to fetch last updated time:', error);
+      setBuildingsError('Failed to load classrooms. Please try again later.');
     }
-  };
-
-  const fetchCooldownStatus = async () => {
-    try {
-      const response = await fetch('/api/cooldown-status');
-      if (response.ok) {
-        const data = await response.json();
-        if (data.in_cooldown) {
-          setCooldownRemaining(data.remaining_minutes);
-          setCooldownStartTime(Date.now());
-          setInitialCooldownMinutes(data.remaining_minutes);
-        } else {
-          setCooldownRemaining(null);
-          setCooldownStartTime(null);
-          setInitialCooldownMinutes(null);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to fetch cooldown status:', error);
-    }
-  };
+  }, [fetchCooldownStatus, lastUpdated]);
 
   const handleRefresh = async () => {
     if (cooldownRemaining && cooldownRemaining > 0) {
@@ -64,17 +78,18 @@ export default function Home() {
       if (response.ok) {
         const data = await response.json();
         setLastUpdated(data.timestamp);
-        // Refresh page to get updated data
-        window.location.reload();
+        // Refetch cooldown and classrooms
+        await fetchCooldownStatus();
+        await fetchLastUpdated();
       } else {
         const errorData = await response.json();
         // Extract cooldown time from error message
         const cooldownMatch = errorData.error?.match(/(\d+\.?\d*)\s+more\s+minutes/);
         if (cooldownMatch) {
           const minutes = parseFloat(cooldownMatch[1]);
+          const expiresAt = Date.now() + minutes * 60 * 1000;
+          setCooldownExpiresAt(expiresAt);
           setCooldownRemaining(minutes);
-          setCooldownStartTime(Date.now());
-          setInitialCooldownMinutes(minutes);
         }
       }
     } catch {
@@ -86,27 +101,25 @@ export default function Home() {
   useEffect(() => {
     fetchLastUpdated();
     fetchCooldownStatus();
-  }, []);
+  }, [fetchLastUpdated, fetchCooldownStatus]);
 
-  // Countdown timer for cooldown
   useEffect(() => {
-    if (!initialCooldownMinutes || !cooldownStartTime) return;
+    if (!cooldownExpiresAt) return;
 
     const interval = setInterval(() => {
-      const elapsed = (Date.now() - cooldownStartTime) / (1000 * 60); // minutes
-      const remaining = Math.max(0, initialCooldownMinutes - elapsed);
-      
-      if (remaining <= 0) {
+      const remainingMs = Math.max(0, cooldownExpiresAt - Date.now());
+      const remainingMinutes = remainingMs / (1000 * 60);
+
+      if (remainingMinutes <= 0) {
         setCooldownRemaining(null);
-        setCooldownStartTime(null);
-        setInitialCooldownMinutes(null);
+        setCooldownExpiresAt(null);
       } else {
-        setCooldownRemaining(remaining);
+        setCooldownRemaining(remainingMinutes);
       }
-    }, 1000); // Update every second
+    }, 1000);
 
     return () => clearInterval(interval);
-  }, [initialCooldownMinutes, cooldownStartTime]);
+  }, [cooldownExpiresAt]);
 
   const formatLastUpdated = (timestamp: string | null) => {
     if (!timestamp) return 'Never';
@@ -120,14 +133,19 @@ export default function Home() {
         <div className="max-w-[736px] mx-auto w-full flex flex-col flex-1">
           <h1 className="text-2xl font-semibold text-gray-900 mb-0 text-center pt-12">Find an empty classroom</h1>
           <div className="flex items-center justify-center gap-3 mb-4">
-            <span className="text-sm text-gray-500">Last updated {formatLastUpdated(lastUpdated)}</span>
+            {!lastUpdated ? (
+              <span className="text-sm text-gray-500 animate-pulse">Loading data...</span>
+            ) : (
+              <span className="text-sm text-gray-500">Last updated {formatLastUpdated(lastUpdated)}</span>
+            )}
             <RefreshButton
               isRefreshing={isRefreshing}
+            isCooldownLoading={isCooldownLoading}
               cooldownRemaining={cooldownRemaining}
               onRefresh={handleRefresh}
             />
           </div>
-          <BuildingsContent />
+          <BuildingsContent buildings={buildings} error={buildingsError} />
           <footer className="mt-auto py-4 flex justify-center gap-6 bg-white/80 backdrop-blur-sm -mx-4 px-4">
             <NotesTooltip>
               <span className="text-gray-500 hover:text-gray-700 cursor-pointer">

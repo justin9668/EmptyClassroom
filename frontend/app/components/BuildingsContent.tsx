@@ -2,31 +2,16 @@
 
 import { BuildingAccordion } from './BuildingAccordion';
 import { SearchBar } from './SearchBar';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { OpenClassroomsResponse } from '../types/buildings';
 
-export function BuildingsContent() {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [buildings, setBuildings] = useState<OpenClassroomsResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
+interface BuildingsContentProps {
+  buildings: OpenClassroomsResponse | null;
+  error: string | null;
+}
 
-  useEffect(() => {
-    async function fetchOpenClassrooms() {
-      try {
-        const response = await fetch('/api/open-classrooms');
-        if (!response.ok) {
-          throw new Error(`Failed to load classrooms (${response.status})`);
-        }
-        const data = await response.json();
-        setBuildings(data.buildings);
-        setError(null);
-      } catch (error) {
-        console.error('Error fetching buildings:', error);
-        setError('Failed to load classrooms. Please try again later.');
-      }
-    }
-    fetchOpenClassrooms();
-  }, []);
+export function BuildingsContent({ buildings, error }: BuildingsContentProps) {
+  const [searchQuery, setSearchQuery] = useState('');
 
   return (
     <>
@@ -40,12 +25,8 @@ export function BuildingsContent() {
           </div>
         ) : buildings ? (
           <BuildingAccordion buildings={buildings} searchQuery={searchQuery} />
-        ) : (
-          <div className="flex items-center justify-center py-8">
-            <div className="animate-pulse text-gray-500">Loading classrooms...</div>
-          </div>
-        )}
+        ) : null}
       </div>
     </>
   );
-} 
+}
